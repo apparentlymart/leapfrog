@@ -144,7 +144,7 @@ def account_for_facebook_user(fb_user, person=None):
 def account_for_facebook_uid(fb_uid, requesting_account=None, person=None):
     try:
         # Avoid doing this followup HTTP request if we already have an account.
-        account = Account.objects.get(service='facebook.com', ident=fb_uid)
+        return Account.objects.get(service='facebook.com', ident=fb_uid)
     except Account.DoesNotExist:
         log.debug("Need to fetch the user object for as-yet-unseen facebook user %s", fb_uid)
 
