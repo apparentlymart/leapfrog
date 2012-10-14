@@ -80,7 +80,7 @@ def home(request):
         person.last_viewed_home = datetime.utcnow()
         person.save()
 
-    stream_items = stream_items_for_user(user)
+    stream_items = stream_items_for_user(user, limit=500)
     try:
         pagecolor_obj = UserSetting.objects.get(user=user, key='pagecolor')
     except UserSetting.DoesNotExist:
@@ -97,8 +97,106 @@ def home(request):
     except IndexError:
         maxreplyitem = 0
 
+    # Now we'll "columnize" the items, making them fit in a 2xn grid
+    # of squares. The rules are:
+    # statuses are always 2 squares wide
+    # photos and links are always 1 square wide
+    # an item with more than one reaction gets to be 2 squares tall
+    # otherwise all items are 1 square tall.
+    width_1 = []
+    width_2 = []
+
+    for item in reversed(stream_items):
+        if item.obj.render_mode == "status":
+            width_2.append(item)
+        elif item.obj.image and item.obj.title:
+            width_1.append(item)
+        # We just ignore mixed mode altogether for now,
+        # which means we won't see YouTube videos, blog posts, etc.
+
+    # Now put the items in the correct order so that when we render
+    # them we can just float left and right and get a consistent grid
+    # without any gaps.
+    columned_items = []
+    column = 1
+    width_1_idx = 0
+    width_2_idx = 0
+    while width_1_idx < len(width_1) or width_2_idx < len(width_2) or column == 2:
+        if column == 1:
+            width_1_item = None
+            width_2_item = None
+
+            # Either size of object is valid here, so we'll just take
+            # the newest of them both.
+            try:
+                width_1_item = width_1[width_1_idx]
+            except IndexError:
+                pass
+
+            try:
+                width_2_item = width_2[width_2_idx]
+            except IndexError:
+                pass
+
+            if width_1_item is None and width_2_item is None:
+                # our work here is done
+                break
+
+            chosen_width = None
+            if width_1_item is None:
+                chosen_width = 2
+            elif width_2_item is None:
+                chosen_width = 1
+            else:
+                if width_2_item.time < width_1_item.time:
+                    chosen_width = 2
+                else:
+                    chosen_width = 1;
+
+            if chosen_width == 1:
+                columned_items.append({
+                    "item": width_1_item,
+                    "width": 1,
+                    "column": column,
+                })
+                column += 1
+                width_1_idx += 1
+            else:
+                columned_items.append({
+                    "item": width_2_item,
+                    "width": 2,
+                    "column": column,
+                })
+                column = 1 # still on column 1, since we're using the whole
+                width_2_idx += 1
+        else:
+            # Only a width 1 item is valid here, so we either
+            # use one or we put in a filler item to make the
+            # grid consistent.
+            try:
+                columned_items.append({
+                    "item": width_1[width_1_idx],
+                    "width": 1,
+                    "column": column,
+                })
+                width_1_idx += 1
+            except:
+                columned_items.append({
+                    "item": None,
+                    "width": 1,
+                    "column": column,
+                })
+
+            column = 1
+
+        # Terminate if we've run out of items in both sides
+        if width_1_idx > len(width_1) and width_2_idx > len(width_2):
+            break
+
     data = {
-        'stream_items': stream_items,
+        #'stream_items': stream_items,
+        'stream_items': [],
+        'columned_items': columned_items,
         'page_title': "%s's neighborhood" % display_name,
         'accounts': accounts,
         'pagecolor': pagecolor,
